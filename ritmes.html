@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Ritmes</title>
+<style>
+  body{
+    margin:0;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    background:#fff;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  }
+
+  .topTitle{
+    position:fixed;
+    top:64px;
+    left:50%;
+    transform:translateX(-50%);
+    font-size:32px;
+    font-weight:950;
+    letter-spacing:.3px;
+    line-height:1;
+    color:#111;
+    user-select:none;
+    z-index:50;
+    pointer-events:none;
+  }
+
+  .wrap{ 
+    width:980px; 
+    max-width:96vw; 
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:20px;
+  }
+
+  .controls{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    align-items:center;
+  }
+
+  .row{
+    display:flex;
+    gap:12px;
+    justify-content:center;
+    flex-wrap:wrap;
+  }
+
+  button{
+    font-size:16px;
+    padding:12px 24px;
+    border:2px solid rgba(0,0,0,.18);
+    background:#fff;
+    border-radius:12px;
+    cursor:pointer;
+    white-space:nowrap;
+    font-weight:600;
+    transition: background .15s ease, border-color .15s ease, transform .1s ease;
+  }
+  
+  button:hover{
+    background:rgba(0,0,0,.04);
+  }
+  
+  button:active{
+    transform:scale(.98);
+  }
+
+  .nextBtn{
+    font-size:20px;
+    padding:16px 48px;
+    background:#111;
+    color:#fff;
+    border-color:#111;
+    font-weight:900;
+  }
+  
+  .nextBtn:hover{
+    background:#333;
+  }
+
+  .modeBtn{
+    padding:12px 20px;
+    border-radius:12px;
+    border:2px solid rgba(0,0,0,.14);
+    background:#fff;
+    font-weight:700;
+  }
+  .modeBtn.on{
+    border-color:#111;
+    background:rgba(0,0,0,.08);
+  }
+
+  svg{ 
+    width:980px; 
+    max-width:96vw; 
+    height:280px; 
+  }
+
+  .brand{
+    position:fixed;
+    right:14px;
+    bottom:12px;
+    font-size:12px;
+    font-weight:700;
+    color:rgba(0,0,0,.55);
+    user-select:none;
+  }
+</style>
+</head>
+<body>
+
+<div class="topTitle">Ritmes</div>
+
+<div class="wrap">
+  <svg id="svg" viewBox="0 0 980 280" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <div class="controls">
+    <div class="row">
+      <button id="easyBtn" class="modeBtn on">Makkelijk</button>
+      <button id="hardBtn" class="modeBtn">Moeilijk</button>
+      <button id="superBtn" class="modeBtn">Super moeilijk</button>
+    </div>
+    
+    <div class="row">
+      <button id="nextBtn" class="nextBtn">Volgende ▶</button>
+    </div>
+  </div>
+</div>
+
+<div class="brand">Muziek met meester Luis 2025</div>
+
+<script>
+(() => {
+  // ===== UI =====
+  const easyBtn  = document.getElementById("easyBtn");
+  const hardBtn  = document.getElementById("hardBtn");
+  const superBtn = document.getElementById("superBtn");
+  const nextBtn  = document.getElementById("nextBtn");
+  const svg = document.getElementById("svg");
+
+  // ===== State =====
+  let mode = "easy";
+  let seed = Date.now();
+  let events = [];
+
+  // ===== Random =====
+  function mulberry32(s){
+    let a = s >>> 0;
+    return function(){
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function weightedPick(rng, items){
+    let sum = 0;
+    for (const it of items) sum += it.w;
+    let r = rng() * sum;
+    for (const it of items){
+      r -= it.w;
+      if (r <= 0) return it.v;
+    }
+    return items[items.length-1].v;
+  }
+
+  function buildEvents(){
+    const rng = mulberry32(seed);
+
+    const ev = [];
+    let idc = 1;
+    const push = (pos, dur, kind) => ev.push({ id: "e" + (idc++), pos, dur, kind });
+
+    let hasNote = false;
+
+    for (let b=0; b<4; b++){
+      const pos = b * 2;
+
+      if (mode === "easy"){
+        // MAKKELIJK: Only quarter notes and quarter rests (NO eighth notes!)
+        const beatType = weightedPick(rng, [
+          { w: 0.60, v: "QNOTE" },
+          { w: 0.40, v: "QREST" },
+        ]);
+        if (beatType === "QNOTE"){ push(pos, 2, "note"); hasNote = true; }
+        else push(pos, 2, "rest");
+      }
+      else if (mode === "hard"){
+        // MOEILIJK: Quarter notes, quarter rests, AND pairs of eighth notes
+        const beatType = weightedPick(rng, [
+          { w: 0.28, v: "QNOTE" },
+          { w: 0.30, v: "QREST" },
+          { w: 0.42, v: "PAIR_8THS" },
+        ]);
+        if (beatType === "QNOTE"){ push(pos, 2, "note"); hasNote = true; }
+        else if (beatType === "QREST"){ push(pos, 2, "rest"); }
+        else { push(pos, 1, "note"); push(pos+1, 1, "note"); hasNote = true; }
+      }
+      else {
+        // SUPER MOEILIJK: All patterns including eighth rest + eighth note
+        const beatType = weightedPick(rng, [
+          { w: 0.22, v: "QNOTE" },
+          { w: 0.25, v: "QREST" },
+          { w: 0.30, v: "PAIR_8THS" },
+          { w: 0.23, v: "REST_NOTE_8TH" },
+        ]);
+
+        if (beatType === "QNOTE"){ push(pos, 2, "note"); hasNote = true; }
+        else if (beatType === "QREST"){ push(pos, 2, "rest"); }
+        else if (beatType === "PAIR_8THS"){
+          push(pos, 1, "note"); push(pos+1, 1, "note"); hasNote = true;
+        } else {
+          push(pos, 1, "rest");
+          push(pos+1, 1, "note"); hasNote = true;
+        }
+      }
+    }
+
+    // Fallback: ensure at least one note - MODE DEPENDENT!
+    if (!hasNote){
+      ev.length = 0; idc = 1;
+      
+      if (mode === "easy"){
+        push(0, 2, "rest");
+        push(2, 2, "note");
+        push(4, 2, "note");
+        push(6, 2, "rest");
+      }
+      else if (mode === "hard"){
+        push(0, 2, "rest");
+        push(2, 2, "note");
+        push(4, 1, "note"); push(5, 1, "note");
+        push(6, 2, "rest");
+      }
+      else {
+        push(0, 2, "rest");
+        push(2, 2, "note");
+        push(4, 1, "rest");
+        push(5, 1, "note");
+        push(6, 2, "rest");
+      }
+    }
+
+    ev.sort((a,b) => a.pos - b.pos || b.dur - a.dur);
+    return ev;
+  }
+
+  // ===== SVG Rendering =====
+  function clearSVG(){ while(svg.firstChild) svg.removeChild(svg.firstChild); }
+  
+  function el(tag, attrs){
+    const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+
+  function renderEvents(ev){
+    clearSVG();
+
+    const xL = 110, xR = 870;
+    const y = 145;
+    const stemTop = y - 50;
+    const stepX = (xR - xL) / 8;
+
+    // Staff line
+    svg.appendChild(el("line", {x1:xL, y1:y, x2:xR, y2:y, stroke:"#000", "stroke-width":"2.5"}));
+    
+    // Bar lines
+    svg.appendChild(el("line", {x1:xL, y1:y-42, x2:xL, y2:y+42, stroke:"#000", "stroke-width":"3.5"}));
+    svg.appendChild(el("line", {x1:xR, y1:y-42, x2:xR, y2:y+42, stroke:"#000", "stroke-width":"3.5"}));
+
+    // Beat markers (light)
+    for(let b=1; b<4; b++){
+      const xb = xL + (xR-xL)*(b/4);
+      svg.appendChild(el("line", {x1:xb, y1:y-20, x2:xb, y2:y+20, stroke:"rgba(0,0,0,.12)", "stroke-width":"2"}));
+    }
+
+    const quarterRestChar = "𝄽";
+    const eighthRestChar  = "𝄾";
+
+    const drawRest = (x, dur) => {
+      const isEighth = dur === 1;
+      const t = el("text", {
+        x: String(x),
+        y: String(y + 16),
+        "text-anchor": "middle",
+        "font-size": String(isEighth ? 36 : 42),
+        "font-family": "serif",
+        fill: "#000"
+      });
+      t.textContent = isEighth ? eighthRestChar : quarterRestChar;
+      svg.appendChild(t);
+    };
+
+    const noteHeads = new Map();
+
+    const drawNote = (eventId, x) => {
+      const head = el("ellipse", {
+        cx: String(x), 
+        cy: String(y),
+        rx: "11", 
+        ry: "7.5",
+        fill: "#000", 
+        stroke: "#000", 
+        "stroke-width": "2",
+        transform: `rotate(-20 ${x} ${y})`
+      });
+      const stem = el("line", {
+        x1: String(x + 10), 
+        y1: String(y),
+        x2: String(x + 10), 
+        y2: String(stemTop),
+        stroke: "#000", 
+        "stroke-width": "2.5"
+      });
+      svg.appendChild(head);
+      svg.appendChild(stem);
+      noteHeads.set(eventId, { x, head, stem });
+    };
+
+    const drawBeamBetween = (x1, x2) => {
+      const beamX = Math.min(x1, x2) + 10;
+      const beamW = Math.abs(x2 - x1);
+      svg.appendChild(el("rect", {
+        x: String(beamX),
+        y: String(stemTop),
+        width: String(beamW),
+        height: "6",
+        fill: "#000"
+      }));
+    };
+
+    const drawFlag = (noteCenterX) => {
+      const sx = noteCenterX + 10;
+      const sy = stemTop;
+      const d = [
+        `M ${sx} ${sy+2}`,
+        `C ${sx+12} ${sy+2}, ${sx+14} ${sy+14}, ${sx+4} ${sy+17}`,
+        `C ${sx+11} ${sy+14}, ${sx+9} ${sy+7}, ${sx} ${sy+7}`,
+        `Z`
+      ].join(" ");
+      svg.appendChild(el("path", { d, fill: "#000" }));
+    };
+
+    const posToX = (pos, dur) => xL + stepX * (pos + dur/2);
+
+    // First pass: draw all notes and rests
+    const eighthNoteAtPos = new Map();
+    for (const e of ev){
+      const x = posToX(e.pos, e.dur);
+      if (e.kind === "rest"){
+        drawRest(x, e.dur);
+      } else {
+        drawNote(e.id, x);
+        if (e.dur === 1) eighthNoteAtPos.set(e.pos, { x, eventId: e.id });
+      }
+    }
+
+    // Second pass: beam pairs of eighth notes
+    const beamed = new Set();
+    for (let p = 0; p < 8; p += 2){
+      const a = eighthNoteAtPos.get(p);
+      const b = eighthNoteAtPos.get(p + 1);
+      if (a && b){
+        drawBeamBetween(a.x, b.x);
+        beamed.add(a.eventId);
+        beamed.add(b.eventId);
+      }
+    }
+
+    // Third pass: add flags to unbeamed eighth notes
+    for (const info of eighthNoteAtPos.values()){
+      if (!beamed.has(info.eventId)){
+        drawFlag(info.x);
+      }
+    }
+  }
+
+  // ===== Mode selection =====
+  function updateModeUI(){
+    easyBtn.classList.toggle("on", mode === "easy");
+    hardBtn.classList.toggle("on", mode === "hard");
+    superBtn.classList.toggle("on", mode === "super");
+  }
+
+  function setMode(m){
+    mode = m;
+    updateModeUI();
+    generateNew();
+  }
+
+  // ===== Generate =====
+  function generateNew(){
+    seed = Date.now() + Math.floor(Math.random() * 100000);
+    events = buildEvents();
+    renderEvents(events);
+  }
+
+  function nextRhythm(){
+    generateNew();
+  }
+
+  // ===== Event listeners =====
+  easyBtn.addEventListener("click", () => setMode("easy"));
+  hardBtn.addEventListener("click", () => setMode("hard"));
+  superBtn.addEventListener("click", () => setMode("super"));
+  nextBtn.addEventListener("click", nextRhythm);
+
+  // Keyboard shortcut: Space or Enter for next
+  window.addEventListener("keydown", (e) => {
+    if (e.key === " " || e.key === "Enter"){
+      e.preventDefault();
+      nextRhythm();
+    }
+  });
+
+  // ===== Init =====
+  generateNew();
+})();
+</script>
+
+</body>
+</html>
